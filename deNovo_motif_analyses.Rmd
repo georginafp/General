@@ -1,0 +1,274 @@
+---
+title: "De Novo Motif analyses REs"
+output: 
+  html_document: 
+    toc: TRUE
+params:
+  fc: 1
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE,
+                      cache = FALSE,
+                      fig.align  = "center",
+                      fig.width = 4)
+library(dplyr)
+library(cowplot)
+library(GenomicRanges)
+devtools::load_all("~/tools/maRge/")
+
+dir.create("data/", F)
+```
+
+# IREs subgroups
+
+## log2 FC thresholds
+
+```{r}
+dirs <- list.dirs(".", recursive=F)
+dirs <- dirs[grepl("HOMER_IREs_endoc", dirs) &
+               grepl("fc", dirs) &
+               !grepl("padj", dirs) &
+               grepl("mask", dirs)]
+
+motifs <- data.frame()
+for (i in dirs) {
+  sign <- countSignHOMER(results_homer=i)
+  homer <- XML::readHTMLTable(paste0(i, "/homerResults.html"))[[1]]
+  homer <- homer[1:sign,]
+  homer$`% of Targets` <- as.numeric(gsub("%", "", homer$`% of Targets`))
+  homer$`% of Background` <- as.numeric(gsub("%", "", homer$`% of Background`))
+  homer <- homer[homer$`% of Targets`>1.5,]
+  homer$`Best Match/Details` <- getSignNamesHOMER(homer, num_sign=sign)
+  homer$`log P-pvalue` <- as.numeric(as.character(homer$`log P-pvalue`))
+
+  name <- gsub("./HOMER_IREs_endoc_", "", gsub("_mask", "", i))
+  homer$fc_REs <- strsplit(name, "_")[[1]][1]
+  homer$subgroup <- strsplit(name, "_")[[1]][2]
+
+  motifs <- rbind(motifs, homer)
+}
+```
+
+```{r, fig.height=10, fig.width=10}
+infl <- c("STAT", "IRF", "ISRE", "NFKB", "REL", "FOS", "JUN")
+isl <- c("ISL", "NEUROD", "PDX", "MAF", "HNF", "FOXA")
+
+motifs$TF_type <- NA
+motifs$TF_type[unique(unlist(sapply(infl, grep, toupper(motifs$`Best Match/Details`))))] <- "Inflammatory"
+motifs$TF_type[unique(unlist(sapply(isl, grep, toupper(motifs$`Best Match/Details`))))] <- "Islet"
+
+motifs <- motifs %>%
+  group_by(fc_REs, subgroup) %>%
+  arrange(-`log P-pvalue`)
+
+motifs$`Best Match/Details` <- factor(motifs$`Best Match/Details`, levels=unique(motifs$`Best Match/Details`))
+
+ggplot(motifs,
+       aes(`Best Match/Details`, -`log P-pvalue`)) +
+  geom_point(aes(size=`% of Targets`, fill=TF_type), pch=21) +
+  theme(legend.position="top",
+        panel.grid.major = element_line(color="grey", size=0.2),
+        axis.text.y=element_text(size=8)) +
+  coord_flip() +
+  facet_grid(subgroup~fc_REs, scales="free", space="free_y") +
+  xlab("Best Match TF") + ylab("-Log10 p-value")
+```
+
+## Padj thresholds
+
+```{r run-de-novo, eval=FALSE}
+for (i in c(0.05)) {
+  # out_homer <- paste0("HOMER_IREs_endoc_fc1_padj", i, "_primed_distal_mask/")
+  # deNovoMotifHOMER(bed=paste0("../../data/bedfiles/IREs_endoc_fc1_padj", i, "_Primed_distal.bed"), 
+  #                  path_output=out_homer,
+  #                  other_param="-mask",
+  #                  path_homer="~/tools/homer/")
+  # 
+  # out_homer <- paste0("HOMER_IREs_endoc_fc1_padj", i, "_opening_distal_mask/")
+  # deNovoMotifHOMER(bed=paste0("../../data/bedfiles/IREs_endoc_fc1_padj", i, "_Opening_distal.bed"),
+  #                  path_output=out_homer,
+  #                  other_param="-mask",
+  #                  path_homer="~/tools/homer/")
+  
+  out_homer <- paste0("HOMER_IREs_endoc_fc1_padj", i, "_neo_distal_mask_rlx_2/")
+  deNovoMotifHOMER(bed=paste0("../../data/bedfiles/IREs_endoc_fc1_padj", i, "_Neo_distal.bed"), 
+                   path_output=out_homer,
+                   other_param="-mask",
+                   path_homer="~/tools/homer/")
+}
+```
+
+```{r}
+dirs <- list.dirs(".", recursive=F)
+dirs <- dirs[grepl("HOMER_IREs_endoc", dirs) &
+               grepl("mask", dirs) &
+               grepl("padj", dirs)]
+
+motifs <- data.frame()
+for (i in dirs) {
+  sign <- countSignHOMER(results_homer=i)
+  homer <- XML::readHTMLTable(paste0(i, "/homerResults.html"))[[1]]
+  homer <- homer[1:sign,]
+  homer$`% of Targets` <- as.numeric(gsub("%", "", homer$`% of Targets`))
+  homer$`% of Background` <- as.numeric(gsub("%", "", homer$`% of Background`))
+  homer <- homer[homer$`% of Targets`>1.5,]
+  homer$`Best Match/Details` <- getSignNamesHOMER(homer, num_sign=sign)
+  homer$`log P-pvalue` <- as.numeric(as.character(homer$`log P-pvalue`))
+  
+  name <- gsub("./HOMER_IREs_endoc_fc1_", "", gsub("_distal_mask", "", i))
+  homer$fc_REs <- strsplit(name, "_")[[1]][1]
+  homer$subgroup <- strsplit(name, "_")[[1]][2]
+  
+  motifs <- rbind(motifs, homer)
+}
+```
+
+```{r, fig.height=10, fig.width=10}
+motifs <- motifs[motifs$subgroup!="mask",]
+
+infl <- c("STAT", "IRF", "ISRE", "NFKB", "REL", "FOS", "JUN")
+isl <- c("ISL", "NEUROD", "PDX", "MAF", "HNF", "FOXA", "NKX")
+
+motifs$TF_type <- NA
+motifs$TF_type[unique(unlist(sapply(infl, grep, toupper(motifs$`Best Match/Details`))))] <- "Inflammatory"
+motifs$TF_type[unique(unlist(sapply(isl, grep, toupper(motifs$`Best Match/Details`))))] <- "Islet"
+
+motifs <- motifs %>% 
+  group_by(fc_REs, subgroup) %>%
+  arrange(-`log P-pvalue`)
+
+motifs$`Best Match/Details` <- factor(motifs$`Best Match/Details`, levels=unique(motifs$`Best Match/Details`))
+
+ggplot(motifs,
+       aes(`Best Match/Details`, -`log P-pvalue`)) +
+  geom_point(aes(size=`% of Targets`, fill=TF_type), pch=21) +
+  theme(legend.position="top",
+        panel.grid.major = element_line(color="grey", size=0.2),
+        axis.text.y=element_text(size=8)) +
+  coord_flip() +
+  facet_grid(subgroup~fc_REs, scales="free", space="free_y") +
+  xlab("Best Match TF") + ylab("-Log10 p-value")
+```
+
+# IREs
+
+## log2 FC thresholds
+
+```{r}
+dirs <- list.dirs("../RE_00_definition", recursive=F)
+dirs <- dirs[grepl("HOMER_IREs_endoc", dirs) &
+               grepl("fc", dirs) &
+               grepl("mask", dirs)]
+
+motifs <- data.frame()
+for (i in dirs) {
+  sign <- countSignHOMER(results_homer=i)
+  homer <- XML::readHTMLTable(paste0(i, "/homerResults.html"))[[1]]
+  homer <- homer[1:sign,]
+  homer$`% of Targets` <- as.numeric(gsub("%", "", homer$`% of Targets`))
+  homer$`% of Background` <- as.numeric(gsub("%", "", homer$`% of Background`))
+  homer <- homer[homer$`% of Targets`>1.5,]
+  homer$`Best Match/Details` <- getSignNamesHOMER(homer, num_sign=sign)
+  homer$`log P-pvalue` <- as.numeric(as.character(homer$`log P-pvalue`))
+
+  name <- gsub("../RE_00_definition/HOMER_IREs_endoc_", "", gsub("_mask", "", i))
+  homer$fc_REs <- strsplit(name, "_")[[1]][1]
+  homer$subgroup <- strsplit(name, "_")[[1]][2]
+
+  motifs <- rbind(motifs, homer)
+}
+```
+
+```{r, fig.height=5, fig.width=10}
+infl <- c("STAT", "IRF", "ISRE", "NFKB", "REL", "FOS", "JUN")
+isl <- c("ISL", "NEUROD", "PDX", "MAF", "HNF", "FOXA")
+
+motifs$TF_type <- NA
+motifs$TF_type[unique(unlist(sapply(infl, grep, toupper(motifs$`Best Match/Details`))))] <- "Inflammatory"
+motifs$TF_type[unique(unlist(sapply(isl, grep, toupper(motifs$`Best Match/Details`))))] <- "Islet"
+
+motifs <- motifs %>%
+  group_by(fc_REs, subgroup) %>%
+  arrange(-`log P-pvalue`)
+
+motifs$`Best Match/Details` <- factor(motifs$`Best Match/Details`, levels=unique(motifs$`Best Match/Details`))
+
+ggplot(motifs,
+       aes(`Best Match/Details`, -`log P-pvalue`)) +
+  geom_point(aes(size=`% of Targets`, fill=TF_type), pch=21) +
+  theme(legend.position="top",
+        panel.grid.major = element_line(color="grey", size=0.2),
+        axis.text.y=element_text(size=8)) +
+  coord_flip() +
+  facet_grid(~fc_REs, scales="free", space="free_y") +
+  xlab("Best Match TF") + ylab("-Log10 p-value")
+```
+
+## Padj thresholds
+```{r, eval=FALSE}
+devtools::load_all("~/tools/maRge/")
+
+for (i in c("0.05", "0.01", "0.001")) {
+  out_homer <- paste0("HOMER_IREs_endoc_fc1_padj", i, "_mask/")
+  deNovoMotifHOMER(bed=paste0("../../data/bedfiles/IREs_endoc_fc1_padj", 
+                              i, ".bed"),
+                 path_output=out_homer,
+                 other_param="-mask",
+                 path_homer="~/tools/homer/")
+}
+```
+
+
+```{r}
+dirs <- list.dirs(".", recursive=F)
+dirs <- dirs[grepl("HOMER_IREs_endoc", dirs) &
+               grepl("mask", dirs) &
+               grepl("padj", dirs) &
+               !grepl("distal", dirs)]
+
+motifs <- data.frame()
+for (i in dirs) {
+  sign <- countSignHOMER(results_homer=i)
+  homer <- XML::readHTMLTable(paste0(i, "/homerResults.html"))[[1]]
+  homer <- homer[1:sign,]
+  homer$`% of Targets` <- as.numeric(gsub("%", "", homer$`% of Targets`))
+  homer$`% of Background` <- as.numeric(gsub("%", "", homer$`% of Background`))
+  homer <- homer[homer$`% of Targets`>1.5,]
+  homer$`Best Match/Details` <- getSignNamesHOMER(homer, num_sign=sign)
+  homer$`log P-pvalue` <- as.numeric(as.character(homer$`log P-pvalue`))
+
+  name <- gsub("./HOMER_IREs_endoc_fc1_", "", gsub("_mask", "", i))
+  homer$fc_REs <- strsplit(name, "_")[[1]][1]
+  homer$subgroup <- strsplit(name, "_")[[1]][2]
+
+  motifs <- rbind(motifs, homer)
+}
+```
+
+```{r, fig.height=5, fig.width=10}
+infl <- c("STAT", "IRF", "ISRE", "NFKB", "REL", "FOS", "JUN")
+isl <- c("ISL", "NEUROD", "PDX", "MAF", "HNF", "FOXA")
+
+motifs$TF_type <- NA
+motifs$TF_type[unique(unlist(sapply(infl, grep, toupper(motifs$`Best Match/Details`))))] <- "Inflammatory"
+motifs$TF_type[unique(unlist(sapply(isl, grep, toupper(motifs$`Best Match/Details`))))] <- "Islet"
+
+motifs <- motifs %>%
+  group_by(fc_REs, subgroup) %>%
+  arrange(-`log P-pvalue`)
+
+motifs$`Best Match/Details` <- factor(motifs$`Best Match/Details`, levels=unique(motifs$`Best Match/Details`))
+
+ggplot(motifs,
+       aes(`Best Match/Details`, -`log P-pvalue`)) +
+  geom_point(aes(size=`% of Targets`, fill=TF_type), pch=21) +
+  theme(legend.position="top",
+        panel.grid.major = element_line(color="grey", size=0.2),
+        axis.text.y=element_text(size=8)) +
+  coord_flip() +
+  facet_grid(~fc_REs, scales="free", space="free_y") +
+  xlab("Best Match TF") + ylab("-Log10 p-value")
+```
